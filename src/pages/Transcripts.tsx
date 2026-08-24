@@ -3,6 +3,7 @@ import { cn } from '@/lib/cn';
 import { useTranscriptDigest } from '@/hooks/useTranscriptDigest';
 import { usePeople } from '@/hooks/usePeople';
 import { useLocations } from '@/hooks/useLocations';
+import { useMemberships } from '@/hooks/useMemberships';
 import { Card } from '@/components/ui/Card';
 import { Textarea } from '@/components/ui/Textarea';
 import { Input } from '@/components/ui/Input';
@@ -75,6 +76,7 @@ export function Transcripts() {
   } = useTranscriptDigest();
   const { people, addPerson } = usePeople();
   const { locations, addLocation } = useLocations();
+  const { locationIdsByPerson, addMembership } = useMemberships();
   const [transcript, setTranscript] = useState('');
   const [selectedPersonId, setSelectedPersonId] = useState('');
   const [notes, setNotes] = useState('');
@@ -82,8 +84,6 @@ export function Transcripts() {
   const [activePersonId, setActivePersonId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<DigestFormState | null>(null);
-
-  const personById = useMemo(() => new Map(people.map((p) => [p.id, p])), [people]);
 
   const personCounts = useMemo(() => {
     const map = new Map<string, number>();
@@ -98,26 +98,35 @@ export function Transcripts() {
   const locationCounts = useMemo(() => {
     const map = new Map<string, number>();
     for (const [personId, count] of personCounts) {
-      const person = personById.get(personId);
-      const key = person?.location_id ?? UNASSIGNED;
-      map.set(key, (map.get(key) ?? 0) + count);
+      const locationIds = locationIdsByPerson.get(personId) ?? [];
+      if (locationIds.length === 0) {
+        map.set(UNASSIGNED, (map.get(UNASSIGNED) ?? 0) + count);
+      } else {
+        for (const locationId of locationIds) {
+          map.set(locationId, (map.get(locationId) ?? 0) + count);
+        }
+      }
     }
     return map;
-  }, [personCounts, personById]);
+  }, [personCounts, locationIdsByPerson]);
+
+  const isPersonInLocationBucket = (personId: string, locationId: string) => {
+    const locationIds = locationIdsByPerson.get(personId) ?? [];
+    return locationId === UNASSIGNED ? locationIds.length === 0 : locationIds.includes(locationId);
+  };
 
   const visibleDigests = useMemo(() => {
     if (activePersonId) {
       return digests.filter((digest) => digest.person_id === activePersonId);
     }
     if (activeLocationId) {
-      return digests.filter((digest) => {
-        const person = digest.person_id ? personById.get(digest.person_id) : undefined;
-        const locationKey = person?.location_id ?? UNASSIGNED;
-        return locationKey === activeLocationId;
-      });
+      return digests.filter(
+        (digest) =>
+          digest.person_id && isPersonInLocationBucket(digest.person_id, activeLocationId),
+      );
     }
     return digests;
-  }, [digests, activeLocationId, activePersonId, personById]);
+  }, [digests, activeLocationId, activePersonId, locationIdsByPerson]);
 
   const selectLocationFilter = (id: string | null) => {
     setActiveLocationId(id);
@@ -264,10 +273,12 @@ export function Transcripts() {
               <PersonPicker
                 people={people}
                 locations={locations}
+                locationIdsByPerson={locationIdsByPerson}
                 personId={selectedPersonId}
                 onPersonChange={setSelectedPersonId}
                 onAddPerson={addPerson}
                 onAddLocation={addLocation}
+                onAddMembership={addMembership}
                 disabled={isSaving}
               />
             </div>
@@ -341,7 +352,7 @@ export function Transcripts() {
                 </p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {people
-                    .filter((p) => (p.location_id ?? UNASSIGNED) === activeLocationId)
+                    .filter((p) => isPersonInLocationBucket(p.id, activeLocationId))
                     .map((person) => (
                       <FilterPill
                         key={person.id}
@@ -440,12 +451,14 @@ export function Transcripts() {
                               <PersonPicker
                                 people={people}
                                 locations={locations}
+                                locationIdsByPerson={locationIdsByPerson}
                                 personId={editForm.personId}
                                 onPersonChange={(personId) =>
                                   setEditForm({ ...editForm, personId })
                                 }
                                 onAddPerson={addPerson}
                                 onAddLocation={addLocation}
+                                onAddMembership={addMembership}
                                 disabled={isMutating}
                               />
                             </div>
@@ -488,14 +501,16 @@ export function Transcripts() {
                         </span>
                       </div>
                       {person && (
-                        <div className="mt-1.5">
-                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-                            {person.location_id && (
-                              <>
-                                {locations.find((l) => l.id === person.location_id)?.name}
-                                <span className="text-slate-400">/</span>
-                              </>
-                            )}
+                        <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                          {(locationIdsByPerson.get(person.id) ?? []).map((locationId) => (
+                            <span
+                              key={locationId}
+                              className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500"
+                            >
+                              {locations.find((l) => l.id === locationId)?.name}
+                            </span>
+                          ))}
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
                             {person.name}
                           </span>
                         </div>
@@ -562,31 +577,38 @@ function FilterPill({
 function PersonPicker({
   people,
   locations,
+  locationIdsByPerson,
   personId,
   onPersonChange,
   onAddPerson,
   onAddLocation,
+  onAddMembership,
   disabled,
 }: {
   people: Person[];
   locations: ChapterLocation[];
+  locationIdsByPerson: Map<string, string[]>;
   personId: string;
   onPersonChange: (personId: string) => void;
-  onAddPerson: (name: string, locationId: string | null) => Promise<Person | null>;
+  onAddPerson: (name: string) => Promise<Person | null>;
   onAddLocation: (name: string) => Promise<ChapterLocation | null>;
+  onAddMembership: (personId: string, locationId: string) => Promise<boolean>;
   disabled?: boolean;
 }) {
-  // Only used to scope the "person" dropdown; derived once from the current
-  // selection so switching it doesn't fight the parent's controlled value.
   const [locationScopeId, setLocationScopeId] = useState(
-    () => people.find((p) => p.id === personId)?.location_id ?? '',
+    () => (locationIdsByPerson.get(personId) ?? [])[0] ?? '',
   );
   const [addingLocation, setAddingLocation] = useState(false);
   const [addingPerson, setAddingPerson] = useState(false);
   const [newLocationName, setNewLocationName] = useState('');
   const [newPersonName, setNewPersonName] = useState('');
 
-  const peopleInScope = people.filter((p) => (p.location_id ?? '') === locationScopeId);
+  const peopleInScope = people.filter((p) => {
+    const locationIds = locationIdsByPerson.get(p.id) ?? [];
+    return locationScopeId === ''
+      ? locationIds.length === 0
+      : locationIds.includes(locationScopeId);
+  });
 
   const handleLocationScopeChange = (value: string) => {
     setLocationScopeId(value);
@@ -606,8 +628,11 @@ function PersonPicker({
 
   const handleAddPerson = async (event: FormEvent) => {
     event.preventDefault();
-    const person = await onAddPerson(newPersonName, locationScopeId || null);
+    const person = await onAddPerson(newPersonName);
     if (person) {
+      if (locationScopeId) {
+        await onAddMembership(person.id, locationScopeId);
+      }
       setNewPersonName('');
       setAddingPerson(false);
       onPersonChange(person.id);

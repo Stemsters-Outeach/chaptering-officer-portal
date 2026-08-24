@@ -28,12 +28,15 @@ export interface Person {
   id: string;
   name: string;
   created_at: string;
-  location_id: string | null;
 }
 
 export interface PersonInsert {
   name: string;
-  location_id: string | null;
+}
+
+export interface PersonChapterLocation {
+  person_id: string;
+  location_id: string;
 }
 
 export interface TranscriptDigest {

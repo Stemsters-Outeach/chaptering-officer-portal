@@ -1,7 +1,3 @@
-// Supabase Edge Function: summarizes a meeting transcript with Google Gemini.
-// The Gemini API key stays server-side (Supabase secret) and is never
-// exposed to the browser.
-
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',

@@ -16,7 +16,7 @@ export async function fetchPeople(): Promise<Person[]> {
 
   const { data, error } = await supabase
     .from(TABLE)
-    .select('id, name, created_at, location_id')
+    .select('id, name, created_at')
     .order('name', { ascending: true });
 
   if (error) {
@@ -27,7 +27,7 @@ export async function fetchPeople(): Promise<Person[]> {
   return data ?? [];
 }
 
-export async function createPerson(name: string, locationId: string | null): Promise<Person> {
+export async function createPerson(name: string): Promise<Person> {
   if (!isSupabaseConfigured) {
     throw new ServiceError('Database is not configured yet. Set up your .env file to continue.');
   }
@@ -39,8 +39,8 @@ export async function createPerson(name: string, locationId: string | null): Pro
 
   const { data, error } = await supabase
     .from(TABLE)
-    .insert({ name: trimmed, location_id: locationId })
-    .select('id, name, created_at, location_id')
+    .insert({ name: trimmed })
+    .select('id, name, created_at')
     .single();
 
   if (error) {

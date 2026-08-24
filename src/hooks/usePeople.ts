@@ -6,7 +6,7 @@ interface UsePeopleResult {
   people: Person[];
   isLoading: boolean;
   error: string | null;
-  addPerson: (name: string, locationId: string | null) => Promise<Person | null>;
+  addPerson: (name: string) => Promise<Person | null>;
 }
 
 export function usePeople(): UsePeopleResult {
@@ -28,14 +28,13 @@ export function usePeople(): UsePeopleResult {
   }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial data fetch on mount
     void refresh();
   }, [refresh]);
 
-  const addPerson = useCallback(async (name: string, locationId: string | null) => {
+  const addPerson = useCallback(async (name: string) => {
     setError(null);
     try {
-      const person = await createPerson(name, locationId);
+      const person = await createPerson(name);
       setPeople((prev) => [...prev, person].sort((a, b) => a.name.localeCompare(b.name)));
       return person;
     } catch (err) {
