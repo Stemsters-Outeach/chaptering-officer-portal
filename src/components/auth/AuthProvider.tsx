@@ -1,22 +1,38 @@
-import { useCallback, useMemo, useState, type ReactNode } from 'react';
-import { AuthContext, type AuthUser } from '@/hooks/useAuth';
+import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
+import { useEffect, useState, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom"; 
+import { supabase } from "../../lib/supabase"; 
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [isLoading] = useState(false);
+export default function AuthGuard({ children }: { children: ReactNode }) {
+  const [authenticated, setAuthenticated] = useState(false);
+  const navigate = useNavigate(); 
 
-  const signIn = useCallback(async (email: string, _password: string) => {
-    setUser({ id: 'placeholder-user', email });
-  }, []);
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        navigate("/login");
+      } else {
+        setAuthenticated(true);
+      }
+    };
 
-  const signOut = useCallback(async () => {
-    setUser(null);
-  }, []);
+    checkAuth();
 
-  const value = useMemo(
-    () => ({ user, isLoading, signIn, signOut }),
-    [user, isLoading, signIn, signOut],
-  );
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: AuthChangeEvent, session: Session | null) => {
+      if (!session) {
+        navigate("/login"); 
+      } else {
+        setAuthenticated(true);
+      }
+    });
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+    return () => subscription.unsubscribe();
+  }, [navigate]);
+
+  if (!authenticated) {
+    return <div style={{ padding: '2rem', fontFamily: 'sans-serif' }}>Checking authentication...</div>;
+  }
+
+  return <>{children}</>;
 }
